@@ -1,0 +1,307 @@
+#Zsanett Buko- ATAC assignment
+
+#connect to docker
+
+sudo docker run -v $PWD:$PWD -w $PWD --rm -it dgarrimar/epigenomics_course
+
+#move to the ATAC-seq folder
+
+cd ATAC-seq
+/Users/zsanika/Documents/Omics_Data_Analyst/Epigenomics/ATAC practical/good codes.txt
+
+#download metadata
+
+../bin/download.metadata.sh "https://www.encodeproject.org/metadata/?replicates.library.biosample.donor.uuid=d370683e-81e7-473f-8475-7716d027849b&status=released&status=submitted&status=in+progress&assay_title=Histone+ChIP-seq&target.label=H3K27ac&target.label=H3K4me1&biosample_ontology.term_name=sigmoid+colon&biosample_ontology.term_name=stomach&type=Experiment"
+
+#explore the metadata
+
+head -1 metadata.tsv
+
+#check the integrity for the metadata file
+md5sum metadata.tsv 
+
+#after let's take a look at the tissue
+
+grep -F "GRCh38" metadata.tsv |grep -F "bigBed_narrowPeak"|grep -F "pseudoreplicated" |awk 'BEGIN{FS=OFS="\t"}{print $1,$11,$23}'
+
+#let's make a folder for the data
+
+mkdir analyses
+
+#download bigBeds file in the data, obtain IDs
+
+ grep -F "GRCh38" metadata.tsv |grep -F "bigBed_narrowPeak"|grep -F "pseudoreplicated" |awk 'BEGIN{FS=OFS="\t"}{print $1,$11,$23}'> analyses/bigBed.peaks.ids.txt
+
+#bigBed files for stomach and sigmoid colon
+cut -f1 analyses/bigBed.peaks.ids.txt |\
+while read filename; do
+  wget -P data/bigBed.files "https://www.encodeproject.org/files/$filename/@@download/$filename.bigBed"
+done
+
+
+#run md5sum, to check their integrity 
+
+#I moved to the data folder and after to the bigBed.files and started to validate my files
+
+md5sum ENCFF372FFI.bigBed
+md5sum ENCFF487CDU.bigBed
+md5sum ENCFF724ZOF.bigBed
+md5sum ENCFF932GIV.bigBed
+md5sum ENCFF487CDU.bigBed
+md5sum ENCFF724ZOF.bigBed
+md5sum ENCFF872UHN.bigBed 
+md5sum ENCFF977LBD.bigBed
+
+#everything looked great with the MD5SUM
+
+#make an annotation folder
+
+mkdir annotation
+
+#download there the gencode.v24.primary_assembly.annotation file.
+
+wget -P annotation "https://www.encodeproject.org/files/gencode.v24.primary_assembly.annotation/@@download/gencode.v24.primary_assembly.annotation.gtf.gz"
+
+#uncompress the gtf.gz
+gunzip annotation/gencode.v24.primary_assembly.annotation.gtf.gz
+
+#convert the gtf annotation file to a BED format
+
+awk '$3=="gene"' annotation/gencode.v24.primary_assembly.annotation.gtf |\
+grep -F "protein_coding" |\
+cut -d ";" -f1 |\
+awk 'BEGIN{OFS="\t"}{print $1, $4, $5, $10, 0, $7, $10}' |\
+sed 's/\"//g' |\
+awk 'BEGIN{FS=OFS="\t"}$1!="chrM"{$2=($2-1); print $0}' > annotation/gencode.v24.protein.coding.gene.body.bed
+
+#we also need the TSS file
+wget -P annotation/ "https://public-docs.crg.es/rguigo/Data/bborsari/UVIC/epigenomics_course/gencode.v24.protein.coding.non.redundant.TSS.bed"
+
+#Create a folder peaks.analyses inside analyses
+
+#move to the analyses folder
+
+mkdir peaks.analyses
+
+#Convert bigBed files peaks to BED files with the bigBedToBed command:
+mkdir data/bed.files
+
+cut -f1 analyses/bigBed.peaks.ids.txt |\
+while read filename; do
+  bigBedToBed data/bigBed.files/"$filename".bigBed data/bed.files/"$filename".bed
+done
+
+
+#Download from alist of promoters  of protein-coding genes. Store this file inside the #annotation folder.
+
+#Run intersection for the tissues
+cut -f-2 analyses/bigBed.peaks.ids.txt |\
+while read filename tissue; do 
+  bedtools intersect -wa -a data/bed.files/"$filename".bed -b annotation/gencode.v24.protein.coding.non.redundant.TSS.bed |\
+  sort -u > analysis/promoters.peaks."$tissue".ATAC-seq.bed
+done
+
+
+#count rows, because we have as many peaks as rows in each file
+
+
+Results:
+
+25469 analyses/promoters.peaks.stomach.ATAC-seq.bed #stomach
+29393 analyses/promoters.peaks.sigmoid_colon.ATAC-seq.bed #sigmoid colon
+
+
+#do intersection with the downloaded protein coding gene body file
+
+cut -f-2 analyses/bigBed.peaks.ids.txt |\
+while read filename tissue; do 
+  bedtools intersect -v -a data/bed.files/"$filename".bed -b annotation/gencode.v24.protein.coding.gene.body.bed |\
+  sort -u > analyses/non.gene.peaks."$tissue".ATAC-seq.bed
+done
+
+
+#count the rows in the recently obtained file 
+
+Result:
+
+17924 analyses/non.gene.peaks.stomach.ATAC-seq.bed #stomach
+29415 analyses/non.gene.peaks.sigmoid_colon.ATAC-seq.bed #sigmoid colon
+
+
+
+############################################################################################################################
+
+
+ 
+#5.Distal regulatory activity
+
+
+#Task1.
+#we are in the epigenomics_uvic folder
+#create the asked folder
+
+mkdir regulatory_elements
+
+#Task2.
+
+#I have previously downloaded the metadata file and I am going to use that
+
+#I need to retrive the H3K27ac modifications
+
+grep -F H3K27ac metadata.tsv |grep -F "bigBed_narrowPeak" |grep -F "pseudoreplicated_peaks" |grep -F "GRCh38" |awk 'BEGIN{FS=OFS="\t"}{print $1, $11, $23}' |sort -k2,2 -k1,1r |sort -k2,2 -u > analyses/bigBed.H3K27ac.peaks.txt
+
+#After I am going to use the same code to retrive the H3K4me1 
+
+grep -F H3K4me1 metadata.tsv |grep -F "bigBed_narrowPeak" |grep -F "pseudoreplicated_peaks" |grep -F "GRCh38" |awk 'BEGIN{FS=OFS="\t"}{print $1, $11, $23}' |sort -k2,2 -k1,1r |sort -k2,2 -u > analyses/bigBed.H3K4me1.peaks.txt
+
+
+#I am moving forward with the previously created files to download data
+
+#first for the H3K27ac
+
+cut -f1 analyses/bigBed.H3K27ac.peaks.txt |\
+while read filename; do
+  wget -P data/bigBed.files/H3K27ac "https://www.encodeproject.org/files/$filename/@@download/$filename.bigBed"
+done
+
+#after using the same code for the H3K4me1 
+
+cut -f1 analyses/bigBed.H3K4me1.peaks.txt |\
+while read filename; do
+  wget -P data/bigBed.files/H3K27me1 "https://www.encodeproject.org/files/$filename/@@download/$filename.bigBed"
+done
+
+
+#convert big.Bed files to bed files 
+
+#After we have the bed files we can make the intersection
+
+#First let's check H3K27ac
+
+bedtools intersect -a analyses/non.gene.peaks.sigmoid_colon.ATAC-seq.bed -b data/bed.files/ENCFF872UHN.bed -u > data/bed.files/H3K27ac_sigmoid.bed
+
+
+bedtools intersect -a analyses/non.gene.peaks.stomach.ATAC-seq.bed -b data/bed.files/ENCFF977LBD.bed -u > data/bed.files/H3K27ac_stomach.bed
+
+#and now the same for H3K4me1
+
+
+bedtools intersect -a analyses/non.gene.peaks.sigmoid_colon.ATAC-seq.bed -b data/bed.files/ENCFF724ZOF.bed -u > data/bed.files/H3K4me1_sigmoid.bed
+
+bedtools intersect -a analyses/non.gene.peaks.stomach.ATAC-seq.bed -b data/bed.files/ENCFF844XRN.bed -u > data/bed.files/H3K4me1_stomach.bed
+
+#overlap histone marks for each tissue H3K4me1 and H3K27ac
+
+bedtools intersect -a data/bed.files/H3K4me1_stomach.bed -b data/bed.files/H3K27ac_stomach.bed -u > data/bed.files/stomach_common.bed
+
+bedtools intersect -a data/bed.files/H3K4me1_sigmoid.bed -b data/bed.files/H3K27ac_sigmoid.bed -u > data/bed.files/sigmoid_common.bed
+
+
+#count the rows as previously
+
+RESULT: 
+
+    15914 sigmoid_common.bed
+   
+     8966 stomach_common.bed
+
+
+
+
+#TASK3
+
+#I am at the ATAC-seq folder 
+#let's create a new folder for the results
+mkdir chromosome1
+
+#move to data folder
+
+cd data
+
+#peaks on stomach tissue
+
+grep -w chr1 bed.files/stomach_common.bed |awk '{print $4 "\t" $2}' > regulatory.elements.starts_stomach.tsv
+
+
+#peaks for sigmoid colon
+
+grep -w chr1 bed.files/sigmoid_common.bed |awk '{print $4 "\t" $2}' > regulatory.elements.starts_sigmoid.tsv
+
+####Result:
+
+1676 regulatory.elements.starts_sigmoid.tsv
+1092 regulatory.elements.starts_stomach.tsv
+
+
+#TASK4
+
+#move to the annotation folder
+
+cat gencode.v24.protein.coding.gene.body.bed|\
+awk 'BEGIN{FS=OFS="\t"}{if ($6=="+"){start=$2} else {start=$3}; print $4, start}'\
+>gene.starts.tsv
+
+
+#TASK5
+
+
+#I have copied the code into a python file and saved it in a bin folder
+
+#I completed the code, see the full code in the uploaded codes 
+
+
+
+
+#Task6
+
+#stomach
+
+cat chromosome1/regulatory.elements.starts_stomach.tsv | while read element start; do 
+   python ../bin/get.distance.py --input chromosome1/gene.start.tsv --start "$start" 
+done > regulatoryElements.genes.distances.stomach.tsv
+
+#sigmoid colon
+
+cat chromosome1/regulatory.elements.starts_sigmoid.tsv | while read element start; do 
+   python ../bin/get.distance.py --input chromosome1/gene.start.tsv --start "$start" 
+done > regulatoryElements.genes.distances.sigmoid.tsv
+
+
+#TASK7
+
+#For this I was working in R
+
+setwd("/Users/zsanika/Documents/Omics_Data_Analyst/Epigenomics/ATAC_practical")
+sigmoid<-read.csv("regulatoryElements.genes.distances.sigmoid.tsv", sep="",header = F )
+head(sigmoid)
+
+stomach<-read.csv("regulatoryElements.genes.distances.stomach.tsv",sep = "",header=F)
+head(stomach)
+
+head(sigmoid[3])
+
+head(stomach[3])
+
+
+lapply(sigmoid[3], mean, na.rm = TRUE)
+
+#sigmoid mean: 16237.18
+
+lapply(sigmoid[3], median, na.rm = TRUE)
+
+#sigmoid median:3972.5
+
+lapply(stomach[3], mean, na.rm = TRUE)
+
+#stomach mean: 13544.3
+
+
+lapply(stomach[3], median, na.rm = TRUE)
+
+#stomach median: 3489.5
+
+
+
+
+
+
