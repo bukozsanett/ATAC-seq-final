@@ -1,0 +1,8 @@
+ENCFF977LBD	stomach	H3K27ac-human
+ENCFF932GIV	stomach	H3K27ac-human
+ENCFF872UHN	sigmoid_colon	H3K27ac-human
+ENCFF683OKQ	sigmoid_colon	H3K27ac-human
+ENCFF487CDU	sigmoid_colon	H3K4me1-human
+ENCFF724ZOF	sigmoid_colon	H3K4me1-human
+ENCFF844XRN	stomach	H3K4me1-human
+ENCFF372FFI	stomach	H3K4me1-human
